@@ -23,35 +23,41 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import javax.json.bind.annotation.JsonbProperty;
-import javax.json.bind.annotation.JsonbTransient;
+import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
+import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
+import java.lang.reflect.Proxy;
 import java.net.URI;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
-public class RequestFromObjectTest {
+public class RequestFromMethodTest {
 
 
     private Request<?> request;
 
     @BeforeEach
     public void before() {
-        final Orange orange = Orange.builder()
-                .base("orange")
-                .direction(Orange.Direction.asc)
-                .head("cabeza")
-                .owner("tomitribe")
-                .repo("orange")
-                .sort(Orange.Sort.long_running)
-                .state(Orange.State.closed)
-                .link("http://foo.example.com/")
-                .draft(true)
-                .build();
 
-        request = Request.from("/repos/{owner}/{repo}/pulls", orange);
+        final OrangeClient orangeClient = (OrangeClient) Proxy.newProxyInstance(this.getClass().getClassLoader(), new Class[]{OrangeClient.class}, (proxy, method, args) -> {
+                    request = Request.from(method, args);
+                    return null;
+                }
+        );
+
+        orangeClient.orange("tomitribe",
+                "orange",
+                Orange.State.closed,
+                "cabeza",
+                "orangebase",
+                Orange.Sort.long_running,
+                Orange.Direction.asc,
+                "http://foo.example.com/",
+                Orange.builder()
+                        .draft(true)
+                        .build());
     }
 
     @Test
@@ -62,7 +68,7 @@ public class RequestFromObjectTest {
     @Test
     public void getURI() {
         final URI uri = request.getURI();
-        assertEquals("/repos/tomitribe/orange/pulls?head=cabeza&state=closed&sort=long-running&base=orange&direction=asc", uri.toASCIIString());
+        assertEquals("/repos/tomitribe/orange/pulls?head=cabeza&state=closed&sort=long-running&base=orangebase&direction=asc", uri.toASCIIString());
     }
 
     @Test
@@ -73,16 +79,11 @@ public class RequestFromObjectTest {
                 .reduce((s, s2) -> s + "\n" + s2)
                 .get();
 
-        assertEquals("Query{name='base', value='orange'}\n" +
+        assertEquals("Query{name='base', value='orangebase'}\n" +
                 "Query{name='direction', value='asc'}\n" +
                 "Query{name='head', value='cabeza'}\n" +
                 "Query{name='sort', value='long-running'}\n" +
                 "Query{name='state', value='closed'}", actual);
-    }
-
-    @Test
-    public void getMethod() {
-        assertNull(request.getMethod());
     }
 
     @Test
@@ -114,46 +115,30 @@ public class RequestFromObjectTest {
                 "}", request.getBody());
     }
 
+    public interface OrangeClient {
+        @GET
+        @Path("/repos/{owner}/{repo}/pulls")
+        void orange(@PathParam("owner") final String owner,
+                    @PathParam("repo") final String repo,
+                    @QueryParam("state") final Orange.State state,
+                    @QueryParam("head") final String head,
+                    @QueryParam("base") final String base,
+                    @QueryParam("sort") final Orange.Sort sort,
+                    @QueryParam("direction") final Orange.Direction direction,
+                    @HeaderParam("link") final String link,
+                    Orange orange
+        );
+    }
+
     @Data
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
     public static class Orange {
 
-        @JsonbTransient
-        @PathParam("owner")
-        private String owner;
-
-        @JsonbTransient
-        @PathParam("repo")
-        private String repo;
-
-        @JsonbTransient
-        @QueryParam("state")
-        private State state;
-
-        @JsonbTransient
-        @QueryParam("head")
-        private String head;
-
-        @JsonbTransient
-        @QueryParam("base")
-        private String base;
-
-        @JsonbTransient
-        @QueryParam("sort")
-        private Sort sort;
-
-        @JsonbTransient
-        @QueryParam("direction")
-        private Direction direction;
-
-        @JsonbTransient
-        @HeaderParam("link")
-        private String link;
-
         @JsonbProperty("draft")
         private Boolean draft;
+
 
         public enum State {
             open, closed, all;

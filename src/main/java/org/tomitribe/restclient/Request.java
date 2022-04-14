@@ -110,6 +110,10 @@ public class Request<ResponseType> {
         return path;
     }
 
+    public Method getMethod() {
+        return method;
+    }
+
     public Class<ResponseType> getResponseType() {
         return responseType;
     }
@@ -188,7 +192,7 @@ public class Request<ResponseType> {
 
     public static Request<?> from(final java.lang.reflect.Method method, final Object[] args) {
         final Path pathAnnotation = method.getAnnotation(Path.class);
-        final String path = pathAnnotation.value().replaceAll("^/", "");
+        final String path = pathAnnotation.value();
 
         final List<Param<Parameter>> params = Param.from(method, args);
 
@@ -224,10 +228,12 @@ public class Request<ResponseType> {
         final Map<String, Object> queryParams = mapParams(params, fields, Param.Type.QUERY);
         final Map<String, Object> headerParams = mapParams(params, fields, Param.Type.HEADER);
 
-        final Set<String> accept = getAccept(headerParams);
-        accept.add("application/json");
+        if (!Void.TYPE.equals(method.getReturnType())) {
+            final Set<String> accept = getAccept(headerParams);
+            accept.add("application/json");
+            headerParams.put("accept", Join.join(", ", accept));
+        }
 
-        headerParams.put("accept", Join.join(", ", accept));
 
         final Method httpMethod = null;
         return new Request<>(httpMethod, path, body, queryParams, headerParams, pathParams);
