@@ -16,9 +16,20 @@
  */
 package org.tomitribe.restclient;
 
+import org.tomitribe.restclient.impl.UriBuilderImpl;
+import org.tomitribe.util.Join;
+
 import javax.json.bind.Jsonb;
 import javax.json.bind.annotation.JsonbProperty;
+import javax.ws.rs.DELETE;
+import javax.ws.rs.GET;
+import javax.ws.rs.HEAD;
 import javax.ws.rs.HeaderParam;
+import javax.ws.rs.OPTIONS;
+import javax.ws.rs.PATCH;
+import javax.ws.rs.POST;
+import javax.ws.rs.PUT;
+import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.client.Entity;
@@ -26,14 +37,19 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.UriBuilder;
 import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Field;
+import java.lang.reflect.Parameter;
 import java.net.URI;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -127,7 +143,7 @@ public class Request<ResponseType> {
     }
 
     public UriBuilder toUriBuilder() {
-        final UriBuilder builder = UriBuilder.fromPath(path);
+        final UriBuilder builder = new UriBuilderImpl().path(path);
 
         for (Map.Entry<String, Object> entry : queryParams.entrySet()) {
             builder.queryParam(entry.getKey(), entry.getValue());
@@ -168,6 +184,79 @@ public class Request<ResponseType> {
         final String json = fields.get(AnnotatedField.Type.BODY) == null ? null : toJson(annotatedObject);
 
         return new Request<>(null, pathTemplate, json, queryParams, headerParams, pathParams);
+    }
+
+    public static Request<?> from(final java.lang.reflect.Method method, final Object[] args) {
+        final Path pathAnnotation = method.getAnnotation(Path.class);
+        final String path = pathAnnotation.value().replaceAll("^/", "");
+
+        final List<Param<Parameter>> params = Param.from(method, args);
+
+        final List<Object> unknown = params.stream()
+                .filter(parameterParam -> parameterParam.getType().equals(Param.Type.UNKNOWN))
+                .map(Param::get)
+                .collect(Collectors.toList());
+
+        if (unknown.size() > 1) {
+            throw new InvalidMethodSignatureException("Client interface methods may only have one non-annotated parameter. Found " + unknown.size(), method);
+        }
+
+        final List<Param<Field>> fields = new ArrayList<>();
+
+        final String body;
+
+        if (unknown.size() == 1) {
+            final Object annotatedObject = unknown.get(0);
+            fields.addAll(Param.fromFields(annotatedObject));
+            final boolean hasContent = fields.stream()
+                    .anyMatch(param -> param.getType().equals(Param.Type.BODY));
+
+            if (hasContent) {
+                body = JsonMarshalling.toFormattedJson(annotatedObject);
+            } else {
+                body = null;
+            }
+        } else {
+            body = null;
+        }
+
+        final Map<String, Object> pathParams = mapParams(params, fields, Param.Type.PATH);
+        final Map<String, Object> queryParams = mapParams(params, fields, Param.Type.QUERY);
+        final Map<String, Object> headerParams = mapParams(params, fields, Param.Type.HEADER);
+
+        final Set<String> accept = getAccept(headerParams);
+        accept.add("application/json");
+
+        headerParams.put("accept", Join.join(", ", accept));
+
+        final Method httpMethod = null;
+        return new Request<>(httpMethod, path, body, queryParams, headerParams, pathParams);
+    }
+
+    private Method getRequestMethod(final java.lang.reflect.Method method) {
+        if (method.isAnnotationPresent(GET.class)) return Method.GET;
+        if (method.isAnnotationPresent(POST.class)) return Method.POST;
+        if (method.isAnnotationPresent(PUT.class)) return Method.PUT;
+        if (method.isAnnotationPresent(DELETE.class)) return Method.DELETE;
+        if (method.isAnnotationPresent(PATCH.class)) return Method.PATCH;
+        if (method.isAnnotationPresent(OPTIONS.class)) return Method.OPTIONS;
+        if (method.isAnnotationPresent(HEAD.class)) return Method.HEAD;
+        throw new InvalidMethodSignatureException("Method must be annotated with one of @GET, @POST, @PUT, @DELETE, @PATCH, @OPTIONS or @HEAD", method);
+    }
+
+    private static Set<String> getAccept(final Map<String, Object> headerParams) {
+        final Object accept = headerParams.get("accept");
+
+        if (accept == null) return new HashSet<>();
+        final String[] values = (accept + "").split(" *, *");
+        return new HashSet<>(Arrays.asList(values));
+    }
+
+    private static Map<String, Object> mapParams(final List<Param<Parameter>> params, final List<Param<Field>> fields, final Param.Type path) {
+        return Stream.concat(fields.stream(), params.stream())
+                .filter(param -> path.equals(param.getType()))
+                .filter(param -> param.get() != null)
+                .collect(Collectors.toMap(Param::getName, Param::get));
     }
 
     private static Map<String, Object> mapToObject(final Map<AnnotatedField.Type, List<AnnotatedField>> fields, final AnnotatedField.Type type) {
