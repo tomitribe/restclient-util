@@ -21,6 +21,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.tomitribe.util.Join;
 
 import javax.json.bind.annotation.JsonbProperty;
 import javax.ws.rs.GET;
@@ -29,7 +30,8 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
 import java.lang.reflect.Proxy;
-import java.net.URI;
+import java.util.Arrays;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -67,8 +69,16 @@ public class RequestFromMethodTest {
 
     @Test
     public void getURI() {
-        final URI uri = request.getURI();
-        assertEquals("/repos/tomitribe/orange/pulls?head=cabeza&state=closed&sort=long-running&base=orangebase&direction=asc", uri.toASCIIString());
+        final String expected = "/repos/tomitribe/orange/pulls?head=cabeza&state=closed&sort=long-running&base=orangebase&direction=asc";
+        final String actual = request.getURI().toASCIIString();
+
+        Function<String, String> normalize = s -> {
+            final String[] parts = s.split("[?&]");
+            Arrays.sort(parts);
+            return Join.join("\n", (Object[]) parts);
+        };
+
+        assertEquals(normalize.apply(expected), normalize.apply(actual));
     }
 
     @Test

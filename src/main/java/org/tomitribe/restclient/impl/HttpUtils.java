@@ -37,6 +37,9 @@ public class HttpUtils {
     private static final String PATH_RESERVED_CHARACTERS = "=@/:!$&\'(),;~";
     private static final Predicate<String> NOT_EMPTY = (String s) -> !s.isEmpty();
 
+    private HttpUtils() {
+    }
+
     public static List<PathSegment> getPathSegments(String thePath, boolean decode) {
         return getPathSegments(thePath, decode, true);
     }
