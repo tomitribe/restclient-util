@@ -28,14 +28,14 @@
 
   <artifactId>restclient-util</artifactId>
   <packaging>jar</packaging>
-  <version>0.3</version>
+  <version>0.4-SNAPSHOT</version>
   <name>Tomitribe :: Rest Client Util</name>
 
   <scm>
     <connection>scm:git:git@github.com:tomitribe/restclient-util.git</connection>
     <url>scm:git:git@github.com:tomitribe/restclient-util.git</url>
     <developerConnection>scm:git:git@github.com:tomitribe/restclient-util.git</developerConnection>
-    <tag>restclient-util-0.3</tag>
+    <tag>HEAD</tag>
   </scm>
 
   <properties>
