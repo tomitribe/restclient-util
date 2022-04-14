@@ -53,7 +53,6 @@ public class HttpUtils {
      * @param thePath path
      * @param decode should the path segments be decoded or not
      * @param ignoreLastSlash should the last slash be ignored or not
-     * @return
      */
     public static List<PathSegment> getPathSegments(String thePath, boolean decode,
                                                     boolean ignoreLastSlash) {
