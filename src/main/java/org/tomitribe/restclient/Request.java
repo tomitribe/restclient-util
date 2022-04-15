@@ -501,7 +501,9 @@ public class Request<ResponseType> {
         }
 
         public String toString() {
-            return "Request.Builder(method=" + this.method + ", path=" + this.path + ", body=" + this.body + ", responseType=" + this.responseType + ", pathParams=" + this.pathParams + ", queryParams=" + this.queryParams + ", headerParams=" + this.headerParams + ")";
+            return "Request.Builder(method=" + this.method + ", path=" + this.path + ", body=" + this.body +
+                    ", responseType=" + this.responseType + ", pathParams=" + this.pathParams + ", queryParams=" +
+                    this.queryParams + ", headerParams=" + this.headerParams + ")";
         }
     }
 }
