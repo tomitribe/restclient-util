@@ -46,6 +46,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
@@ -53,35 +54,40 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+
 public class Request<ResponseType> {
+
 
     private final Method method;
     private final String path;
-    private String body;
-    private Class<ResponseType> responseType;
+    private final String body;
+    private final Class<ResponseType> responseType;
     private final Map<String, Object> pathParams;
     private final Map<String, Object> queryParams;
     private final Map<String, Object> headerParams;
 
     public Request(final Method method, final String path, final String body,
                    final Map<String, Object> queryParams, final Map<String, Object> headerParams,
-                   final Map<String, Object> pathParams) {
+                   final Map<String, Object> pathParams, final Class<ResponseType> responseType) {
         this.method = method;
         this.path = path;
         this.body = body;
-        this.queryParams = queryParams;
-        this.headerParams = headerParams;
-        this.pathParams = pathParams;
+        this.responseType = responseType;
+        this.queryParams = Collections.unmodifiableMap(new LinkedHashMap<>(queryParams));
+        this.pathParams = Collections.unmodifiableMap(new LinkedHashMap<>(pathParams));
+
+        // Lower case all headers
+        final LinkedHashMap<String, Object> headers = new LinkedHashMap<>();
+        for (final Map.Entry<String, Object> entry : headerParams.entrySet()) {
+            headers.put(entry.getKey().toLowerCase(), entry.getValue());
+        }
+
+        this.headerParams = Collections.unmodifiableMap(headers);
+
     }
 
-    private Request(final Request<?> request, final Class<ResponseType> responseType) {
-        this.method = request.method;
-        this.path = request.path;
-        this.body = request.body;
-        this.queryParams = new HashMap<>(request.queryParams);
-        this.headerParams = new HashMap<>(request.headerParams);
-        this.pathParams = new HashMap<>(request.pathParams);
-        this.responseType = responseType;
+    public static <ResponseType> Builder<ResponseType> builder() {
+        return new Builder<>();
     }
 
     public Request<ResponseType> path(final String name, final Object value) {
@@ -100,12 +106,21 @@ public class Request<ResponseType> {
     }
 
     public Request<ResponseType> body(final Object value) {
-        this.body = JsonMarshalling.toFormattedJson(value);
-        return this;
+        final String json = JsonMarshalling.toFormattedJson(value);
+        return toBuilder().body(json)
+                .header("content-type", "application/json")
+                .build();
     }
 
     public <T> Request<T> response(final Class<T> responseType) {
-        return new Request<>(this, responseType);
+        return new Builder<T>()
+                .method(this.method)
+                .path(this.path)
+                .body(this.body)
+                .pathParams(this.pathParams)
+                .queryParams(this.queryParams)
+                .headerParams(this.headerParams)
+                .responseType(responseType).build();
     }
 
     public String getPath() {
@@ -175,7 +190,7 @@ public class Request<ResponseType> {
             pathParams.put(name, parameter);
         }
 
-        return new Request<>(null, path, null, new HashMap<>(), new HashMap<>(), pathParams);
+        return new Request<>(null, path, null, new HashMap<>(), new HashMap<>(), pathParams, null);
     }
 
     public static Request<?> from(final String pathTemplate, final Object annotatedObject) {
@@ -189,7 +204,7 @@ public class Request<ResponseType> {
 
         final String json = fields.get(AnnotatedField.Type.BODY) == null ? null : toJson(annotatedObject);
 
-        return new Request<>(null, pathTemplate, json, queryParams, headerParams, pathParams);
+        return new Request<>(null, pathTemplate, json, queryParams, headerParams, pathParams, null);
     }
 
     public static Request<?> from(final java.lang.reflect.Method method, final Object[] args) {
@@ -237,11 +252,11 @@ public class Request<ResponseType> {
         }
 
 
-        final Method httpMethod = null;
-        return new Request<>(httpMethod, path, body, queryParams, headerParams, pathParams);
+        final Method httpMethod = getRequestMethod(method);
+        return new Request<>(httpMethod, path, body, queryParams, headerParams, pathParams, null);
     }
 
-    private Method getRequestMethod(final java.lang.reflect.Method method) {
+    private static Method getRequestMethod(final java.lang.reflect.Method method) {
         if (method.isAnnotationPresent(GET.class)) return Method.GET;
         if (method.isAnnotationPresent(POST.class)) return Method.POST;
         if (method.isAnnotationPresent(PUT.class)) return Method.PUT;
@@ -277,6 +292,45 @@ public class Request<ResponseType> {
     private static String toJson(final Object body) {
         final Jsonb jsonb = JsonbInstances.get();
         return jsonb.toJson(body);
+    }
+
+    public Builder<ResponseType> toBuilder() {
+        return new Builder<ResponseType>()
+                .method(this.method)
+                .path(this.path)
+                .body(this.body)
+                .responseType(this.responseType)
+                .pathParams(new LinkedHashMap<>(this.pathParams))
+                .queryParams(new LinkedHashMap<>(this.queryParams))
+                .headerParams(new LinkedHashMap<>(this.headerParams));
+    }
+
+    public <T> Request<T> merge(final Request<T> that) {
+        // Start with a copy of this request
+        final Builder<T> merged = new Builder<T>()
+                .method(this.method)
+                .path(this.path)
+                .body(this.body)
+                .pathParams(new LinkedHashMap<>(this.pathParams))
+                .queryParams(new LinkedHashMap<>(this.queryParams))
+                .headerParams(new LinkedHashMap<>(this.headerParams));
+
+        // Override with the supplied request
+        merged.queryParams.putAll(that.queryParams);
+        merged.pathParams.putAll(that.pathParams);
+        merged.headerParams.putAll(that.headerParams);
+
+        if (that.body != null) merged.body(that.body);
+        if (that.path != null) merged.path(that.path);
+        if (that.method != null) merged.method(that.method);
+
+        if (that.responseType != null) {
+            merged.responseType(that.responseType);
+        } else if (this.responseType != null) {
+            merged.responseType((Class<T>) this.responseType);
+        }
+
+        return merged.build();
     }
 
     private static class AnnotatedField {
@@ -363,5 +417,91 @@ public class Request<ResponseType> {
 
     public enum Method {
         GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+    }
+
+    public static class Builder<ResponseType> {
+        private Method method;
+        private String path;
+        private String body;
+        private Class<ResponseType> responseType;
+        private Map<String, Object> pathParams = new LinkedHashMap<>();
+        private Map<String, Object> queryParams = new LinkedHashMap<>();
+        private Map<String, Object> headerParams = new LinkedHashMap<>();
+
+        Builder() {
+        }
+
+        public Builder<ResponseType> method(Method method) {
+            this.method = method;
+            return this;
+        }
+
+        public Builder<ResponseType> path(String path) {
+            this.path = path;
+            return this;
+        }
+
+        public Builder<ResponseType> body(Object body) {
+            final String json = JsonMarshalling.toFormattedJson(body);
+            header("content-type", "application/json");
+            this.body = json;
+            return this;
+        }
+
+        public Builder<ResponseType> body(String body) {
+            this.body = body;
+            return this;
+        }
+
+        public Builder<ResponseType> responseType(Class<ResponseType> responseType) {
+            this.responseType = responseType;
+            return this;
+        }
+
+        public Builder<ResponseType> pathParams(Map<String, Object> pathParams) {
+            this.pathParams = pathParams;
+            return this;
+        }
+
+        public Builder<ResponseType> queryParams(Map<String, Object> queryParams) {
+            this.queryParams = queryParams;
+            return this;
+        }
+
+        public Builder<ResponseType> headerParams(Map<String, Object> headerParams) {
+            this.headerParams = new LinkedHashMap<>();
+            for (final Map.Entry<String, Object> entry : headerParams.entrySet()) {
+                this.headerParams.put(entry.getKey().toLowerCase(), entry.getValue());
+            }
+            return this;
+        }
+
+        public Builder<ResponseType> header(final String name, final Object value) {
+            headerParams.put(name.toLowerCase(), value);
+            return this;
+        }
+
+        /**
+         * Adds a path parameter to the pathParams map
+         * @param name name of the path parameter
+         * @param value value of the path parameter
+         */
+        public Builder<ResponseType> path(final String name, final Object value) {
+            pathParams.put(name, value);
+            return this;
+        }
+
+        public Builder<ResponseType> query(final String name, final Object value) {
+            queryParams.put(name, value);
+            return this;
+        }
+
+        public Request<ResponseType> build() {
+            return new Request<>(method, path, body, queryParams, headerParams, pathParams, responseType);
+        }
+
+        public String toString() {
+            return "Request.Builder(method=" + this.method + ", path=" + this.path + ", body=" + this.body + ", responseType=" + this.responseType + ", pathParams=" + this.pathParams + ", queryParams=" + this.queryParams + ", headerParams=" + this.headerParams + ")";
+        }
     }
 }

@@ -106,6 +106,12 @@ public class RequestFromMethodTest {
         assertEquals("Header{name='link', value='http://foo.example.com/'}", actual);
     }
 
+
+    @Test
+    public void getMethod() {
+        assertEquals(Request.Method.GET, request.getMethod());
+    }
+
     @Test
     public void getPathParams() {
         final String actual = request.getPathParams().entrySet().stream()

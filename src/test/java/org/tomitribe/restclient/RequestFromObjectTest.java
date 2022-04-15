@@ -28,7 +28,6 @@ import javax.json.bind.annotation.JsonbTransient;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
-import java.net.URI;
 import java.util.Arrays;
 import java.util.function.Function;
 
