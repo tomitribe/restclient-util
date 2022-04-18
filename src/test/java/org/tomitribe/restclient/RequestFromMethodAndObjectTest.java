@@ -30,7 +30,6 @@ import javax.ws.rs.HeaderParam;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
-import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.function.Function;
 
@@ -44,11 +43,7 @@ public class RequestFromMethodAndObjectTest {
     @BeforeEach
     public void before() {
 
-        final OrangeClient orangeClient = (OrangeClient) Proxy.newProxyInstance(this.getClass().getClassLoader(), new Class[]{OrangeClient.class}, (proxy, method, args) -> {
-                    request = Request.from(method, args);
-                    return null;
-                }
-        );
+        final Client client = new Client();
 
         final Orange build = Orange.builder()
                 .base("orange")
@@ -62,12 +57,14 @@ public class RequestFromMethodAndObjectTest {
                 .draft(true)
                 .build();
 
-        orangeClient.orange("red",
+        client.get(OrangeClient.class).orange("red",
                 "orangebase",
                 Orange.Sort.long_running,
                 Orange.Direction.asc,
                 "http://foo.example.com/",
                 build);
+
+        request = client.getRequest();
     }
 
     @Test
