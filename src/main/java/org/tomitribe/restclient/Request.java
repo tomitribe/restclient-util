@@ -207,6 +207,10 @@ public class Request<ResponseType> {
         return new Request<>(null, pathTemplate, json, queryParams, headerParams, pathParams, null);
     }
 
+    public static Request<?> from(final Object annotatedObject) {
+        return from(null, annotatedObject);
+    }
+
     public static Request<?> from(final java.lang.reflect.Method method, final Object[] args) {
         final Path pathAnnotation = method.getAnnotation(Path.class);
         final String path = pathAnnotation.value();
@@ -222,25 +226,16 @@ public class Request<ResponseType> {
             throw new InvalidMethodSignatureException("Client interface methods may only have one non-annotated parameter. Found " + unknown.size(), method);
         }
 
-        final List<Param<Field>> fields = new ArrayList<>();
 
-        final String body;
-
+        final Request<?> requestFromObject;
         if (unknown.size() == 1) {
             final Object annotatedObject = unknown.get(0);
-            fields.addAll(Param.fromFields(annotatedObject));
-            final boolean hasContent = fields.stream()
-                    .anyMatch(param -> param.getType().equals(Param.Type.BODY));
-
-            if (hasContent) {
-                body = JsonMarshalling.toFormattedJson(annotatedObject);
-            } else {
-                body = null;
-            }
+            requestFromObject = from(annotatedObject);
         } else {
-            body = null;
+            requestFromObject = null;
         }
 
+        final List<Param<Field>> fields = new ArrayList<>();
         final Map<String, Object> pathParams = mapParams(params, fields, Param.Type.PATH);
         final Map<String, Object> queryParams = mapParams(params, fields, Param.Type.QUERY);
         final Map<String, Object> headerParams = mapParams(params, fields, Param.Type.HEADER);
@@ -253,7 +248,10 @@ public class Request<ResponseType> {
 
 
         final Method httpMethod = getRequestMethod(method);
-        return new Request<>(httpMethod, path, body, queryParams, headerParams, pathParams, null);
+        final Request<Object> requestFromParameters = new Request<>(httpMethod, path, null, queryParams, headerParams, pathParams, null);
+
+        if (requestFromObject == null) return requestFromParameters;
+        return requestFromObject.merge(requestFromParameters);
     }
 
     private static Method getRequestMethod(final java.lang.reflect.Method method) {
