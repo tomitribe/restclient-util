@@ -44,9 +44,9 @@ public class NoBodyTest {
 
         final Request<?> request = client.getRequest();
         assertNull(request.getBody());
-        assertEquals(255, request.getQueryParams().get("red"));
-        assertEquals(165, request.getQueryParams().get("green"));
-        assertEquals(0, request.getQueryParams().get("blue"));
+        assertEquals("255", request.getQueryParams().get("red"));
+        assertEquals("165", request.getQueryParams().get("green"));
+        assertEquals("0", request.getQueryParams().get("blue"));
     }
 
     @Test
@@ -57,9 +57,9 @@ public class NoBodyTest {
         final Request<?> request = client.getRequest();
         assertNull(request.getBody());
         assertEquals(Request.Method.PUT, request.getMethod());
-        assertEquals(255, request.getQueryParams().get("red"));
-        assertEquals(165, request.getQueryParams().get("green"));
-        assertEquals(0, request.getQueryParams().get("blue"));
+        assertEquals("255", request.getQueryParams().get("red"));
+        assertEquals("165", request.getQueryParams().get("green"));
+        assertEquals("0", request.getQueryParams().get("blue"));
     }
 
     public interface ColorClient {

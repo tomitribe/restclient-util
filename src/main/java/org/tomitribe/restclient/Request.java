@@ -18,6 +18,7 @@ package org.tomitribe.restclient;
 
 import org.tomitribe.restclient.impl.UriBuilderImpl;
 import org.tomitribe.util.Join;
+import org.tomitribe.util.editor.Converter;
 
 import javax.json.bind.Jsonb;
 import javax.json.bind.annotation.JsonbProperty;
@@ -36,6 +37,7 @@ import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.UriBuilder;
 import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Field;
 import java.lang.reflect.Parameter;
 import java.net.URI;
@@ -51,6 +53,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -62,13 +65,13 @@ public class Request<ResponseType> {
     private final String path;
     private final String body;
     private final Class<ResponseType> responseType;
-    private final Map<String, Object> pathParams;
-    private final Map<String, Object> queryParams;
-    private final Map<String, Object> headerParams;
+    private final Map<String, String> pathParams;
+    private final Map<String, String> queryParams;
+    private final Map<String, String> headerParams;
 
-    public Request(final Method method, final String path, final String body,
-                   final Map<String, Object> queryParams, final Map<String, Object> headerParams,
-                   final Map<String, Object> pathParams, final Class<ResponseType> responseType) {
+    Request(final Method method, final String path, final String body,
+            final Map<String, String> queryParams, final Map<String, String> headerParams,
+            final Map<String, String> pathParams, final Class<ResponseType> responseType) {
         this.method = method;
         this.path = path;
         this.body = body;
@@ -77,8 +80,8 @@ public class Request<ResponseType> {
         this.pathParams = Collections.unmodifiableMap(new LinkedHashMap<>(pathParams));
 
         // Lower case all headers
-        final LinkedHashMap<String, Object> headers = new LinkedHashMap<>();
-        for (final Map.Entry<String, Object> entry : headerParams.entrySet()) {
+        final LinkedHashMap<String, String> headers = new LinkedHashMap<>();
+        for (final Map.Entry<String, String> entry : headerParams.entrySet()) {
             headers.put(entry.getKey().toLowerCase(), entry.getValue());
         }
 
@@ -91,18 +94,15 @@ public class Request<ResponseType> {
     }
 
     public Request<ResponseType> path(final String name, final Object value) {
-        this.pathParams.put(name, value);
-        return this;
+        return toBuilder().path(name, value).build();
     }
 
     public Request<ResponseType> query(final String name, final Object value) {
-        this.queryParams.put(name, value);
-        return this;
+        return toBuilder().query(name, value).build();
     }
 
     public Request<ResponseType> header(final String name, final Object value) {
-        this.headerParams.put(name, value);
-        return this;
+        return toBuilder().header(name, value).build();
     }
 
     public Request<ResponseType> body(final Object value) {
@@ -135,7 +135,7 @@ public class Request<ResponseType> {
         return responseType;
     }
 
-    public Map<String, Object> getPathParams() {
+    public Map<String, String> getPathParams() {
         return pathParams;
     }
 
@@ -144,14 +144,14 @@ public class Request<ResponseType> {
     }
 
     public URI getURI() {
-        return toUriBuilder().resolveTemplates(pathParams).build();
+        return toUriBuilder().resolveTemplates((Map) this.pathParams).build();
     }
 
-    public Map<String, Object> getQueryParams() {
+    public Map<String, String> getQueryParams() {
         return queryParams;
     }
 
-    public Map<String, Object> getHeaderParams() {
+    public Map<String, String> getHeaderParams() {
         return headerParams;
     }
 
@@ -166,7 +166,7 @@ public class Request<ResponseType> {
     public UriBuilder toUriBuilder() {
         final UriBuilder builder = new UriBuilderImpl().path(path);
 
-        for (Map.Entry<String, Object> entry : queryParams.entrySet()) {
+        for (Map.Entry<String, String> entry : queryParams.entrySet()) {
             builder.queryParam(entry.getKey(), entry.getValue());
         }
 
@@ -175,7 +175,7 @@ public class Request<ResponseType> {
 
     public static Request<?> target(final String path, final Object... pathParameters) {
         final Template template = new Template(path);
-        final HashMap<String, Object> pathParams = new HashMap<>();
+        final HashMap<String, String> pathParams = new HashMap<>();
 
         final List<String> variables = template.getVariables();
         final ListIterator<String> iterator = variables.listIterator();
@@ -187,7 +187,8 @@ public class Request<ResponseType> {
             }
             final String name = iterator.next();
             final Object parameter = pathParameters[i];
-            pathParams.put(name, parameter);
+            final String stringValue = stringValue(name, parameter);
+            pathParams.put(name, stringValue);
         }
 
         return new Request<>(null, path, null, new HashMap<>(), new HashMap<>(), pathParams, null);
@@ -198,9 +199,9 @@ public class Request<ResponseType> {
                 .map(field -> AnnotatedField.from(field, annotatedObject))
                 .collect(Collectors.groupingBy(AnnotatedField::getType));
 
-        final Map<String, Object> queryParams = mapToObject(fields, AnnotatedField.Type.QUERY);
-        final Map<String, Object> headerParams = mapToObject(fields, AnnotatedField.Type.HEADER);
-        final Map<String, Object> pathParams = mapToObject(fields, AnnotatedField.Type.PATH);
+        final Map<String, String> queryParams = mapToObject(fields, AnnotatedField.Type.QUERY);
+        final Map<String, String> headerParams = mapToObject(fields, AnnotatedField.Type.HEADER);
+        final Map<String, String> pathParams = mapToObject(fields, AnnotatedField.Type.PATH);
 
         final String json = fields.get(AnnotatedField.Type.BODY) == null ? null : toJson(annotatedObject);
 
@@ -236,9 +237,9 @@ public class Request<ResponseType> {
         }
 
         final List<Param<Field>> fields = new ArrayList<>();
-        final Map<String, Object> pathParams = mapParams(params, fields, Param.Type.PATH);
-        final Map<String, Object> queryParams = mapParams(params, fields, Param.Type.QUERY);
-        final Map<String, Object> headerParams = mapParams(params, fields, Param.Type.HEADER);
+        final Map<String, String> pathParams = mapParams(params, fields, Param.Type.PATH);
+        final Map<String, String> queryParams = mapParams(params, fields, Param.Type.QUERY);
+        final Map<String, String> headerParams = mapParams(params, fields, Param.Type.HEADER);
 
         if (!Void.TYPE.equals(method.getReturnType())) {
             final Set<String> accept = getAccept(headerParams);
@@ -265,7 +266,7 @@ public class Request<ResponseType> {
         throw new InvalidMethodSignatureException("Method must be annotated with one of @GET, @POST, @PUT, @DELETE, @PATCH, @OPTIONS or @HEAD", method);
     }
 
-    private static Set<String> getAccept(final Map<String, Object> headerParams) {
+    private static Set<String> getAccept(final Map<String, String> headerParams) {
         final Object accept = headerParams.get("accept");
 
         if (accept == null) return new HashSet<>();
@@ -273,18 +274,24 @@ public class Request<ResponseType> {
         return new HashSet<>(Arrays.asList(values));
     }
 
-    private static Map<String, Object> mapParams(final List<Param<Parameter>> params, final List<Param<Field>> fields, final Param.Type path) {
+    private static Map<String, String> mapParams(final List<Param<Parameter>> params, final List<Param<Field>> fields, final Param.Type path) {
+        final Function<Param<? extends AnnotatedElement>, String> value = param -> {
+            return stringValue(param.getName(), param.get());
+        };
         return Stream.concat(fields.stream(), params.stream())
                 .filter(param -> path.equals(param.getType()))
                 .filter(param -> param.get() != null)
-                .collect(Collectors.toMap(Param::getName, Param::get));
+                .collect(Collectors.toMap(Param::getName, value));
     }
 
-    private static Map<String, Object> mapToObject(final Map<AnnotatedField.Type, List<AnnotatedField>> fields, final AnnotatedField.Type type) {
+    private static Map<String, String> mapToObject(final Map<AnnotatedField.Type, List<AnnotatedField>> fields, final AnnotatedField.Type type) {
         final List<AnnotatedField> list = fields.getOrDefault(type, Collections.EMPTY_LIST);
 
+        final Function<AnnotatedField, String> getValue = annotatedField -> {
+            return stringValue(annotatedField.getName(), annotatedField.getValue());
+        };
         return list.stream()
-                .collect(Collectors.toMap(AnnotatedField::getName, AnnotatedField::getValue));
+                .collect(Collectors.toMap(AnnotatedField::getName, getValue));
     }
 
     private static String toJson(final Object body) {
@@ -422,9 +429,9 @@ public class Request<ResponseType> {
         private String path;
         private String body;
         private Class<ResponseType> responseType;
-        private Map<String, Object> pathParams = new LinkedHashMap<>();
-        private Map<String, Object> queryParams = new LinkedHashMap<>();
-        private Map<String, Object> headerParams = new LinkedHashMap<>();
+        private Map<String, String> pathParams = new LinkedHashMap<>();
+        private Map<String, String> queryParams = new LinkedHashMap<>();
+        private Map<String, String> headerParams = new LinkedHashMap<>();
 
         Builder() {
         }
@@ -456,26 +463,27 @@ public class Request<ResponseType> {
             return this;
         }
 
-        public Builder<ResponseType> pathParams(Map<String, Object> pathParams) {
+        public Builder<ResponseType> pathParams(Map<String, String> pathParams) {
             this.pathParams = pathParams;
             return this;
         }
 
-        public Builder<ResponseType> queryParams(Map<String, Object> queryParams) {
+        public Builder<ResponseType> queryParams(Map<String, String> queryParams) {
             this.queryParams = queryParams;
             return this;
         }
 
-        public Builder<ResponseType> headerParams(Map<String, Object> headerParams) {
+        public Builder<ResponseType> headerParams(Map<String, String> headerParams) {
             this.headerParams = new LinkedHashMap<>();
-            for (final Map.Entry<String, Object> entry : headerParams.entrySet()) {
+            for (final Map.Entry<String, String> entry : headerParams.entrySet()) {
                 this.headerParams.put(entry.getKey().toLowerCase(), entry.getValue());
             }
             return this;
         }
 
         public Builder<ResponseType> header(final String name, final Object value) {
-            headerParams.put(name.toLowerCase(), value);
+            final String stringValue = stringValue(name, value);
+            headerParams.put(name.toLowerCase(), stringValue);
             return this;
         }
 
@@ -485,12 +493,14 @@ public class Request<ResponseType> {
          * @param value value of the path parameter
          */
         public Builder<ResponseType> path(final String name, final Object value) {
-            pathParams.put(name, value);
+            final String stringValue = stringValue(name, value);
+            pathParams.put(name, stringValue);
             return this;
         }
 
         public Builder<ResponseType> query(final String name, final Object value) {
-            queryParams.put(name, value);
+            final String stringValue = stringValue(name, value);
+            queryParams.put(name, stringValue);
             return this;
         }
 
@@ -503,5 +513,9 @@ public class Request<ResponseType> {
                     ", responseType=" + this.responseType + ", pathParams=" + this.pathParams + ", queryParams=" +
                     this.queryParams + ", headerParams=" + this.headerParams + ")";
         }
+    }
+
+    private static String stringValue(final String name, final Object value) {
+        return value.toString();
     }
 }

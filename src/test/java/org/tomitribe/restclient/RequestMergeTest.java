@@ -183,8 +183,8 @@ public class RequestMergeTest {
         assertEquals(expected, c.getQueryParams().get(link));
     }
 
-    private void assertMap(final Map<String, Object> expectedMap, final Map<String, Object> actualMap) {
-        for (final Map.Entry<String, Object> entry : actualMap.entrySet()) {
+    private void assertMap(final Map<String, String> expectedMap, final Map<String, String> actualMap) {
+        for (final Map.Entry<String, String> entry : actualMap.entrySet()) {
             final Object expected = expectedMap.get(entry.getKey());
             final Object actual = entry.getValue();
             assertEquals(expected, actual);
