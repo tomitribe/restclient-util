@@ -18,7 +18,6 @@ package org.tomitribe.restclient;
 
 import org.tomitribe.restclient.impl.UriBuilderImpl;
 import org.tomitribe.util.Join;
-import org.tomitribe.util.editor.Converter;
 
 import javax.json.bind.Jsonb;
 import javax.json.bind.annotation.JsonbProperty;
@@ -45,6 +44,7 @@ import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -516,6 +516,14 @@ public class Request<ResponseType> {
     }
 
     private static String stringValue(final String name, final Object value) {
+        if (value instanceof Collection) {
+            final Collection<?> collection = (Collection<?>) value;
+            final String stringValue = collection.stream()
+                    .map(o -> stringValue(name, o))
+                    .reduce((o, o2) -> o + "," + o2)
+                    .orElse("");
+            return stringValue;
+        }
         return value.toString();
     }
 }
